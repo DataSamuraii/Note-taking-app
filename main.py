@@ -1,7 +1,7 @@
-from typing import List
+from typing import Annotated
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Path
 from database import notes_db, tags_db
 from schemas import NoteSchema, NewNoteSchema, TagSchema
 
@@ -25,10 +25,10 @@ def find_tag_by_id(tag_id: int):
     return None, None
 
 
-def add_tags_to_db(tags: List[TagSchema]):
+def add_tags_to_db(tags: set[TagSchema]):
     tag_names_set = {tag['tag_name'] for tag in tags_db}
     for tag in tags:
-        if not any(existing_tag['tag_name'] == tag.tag_name for existing_tag in tag_names_set):
+        if not any(existing_tag == tag.tag_name for existing_tag in tag_names_set):
             max_id = find_max_id(tags_db)
             new_tag = {'id': max_id, 'tag_name': tag.tag_name}
             tags_db.append(new_tag)
@@ -48,17 +48,18 @@ async def get_tags():
 
 
 @app.get("/notes/search")
-async def search_note(note_title: str = None, note_content: str = None):
+async def search_note(note_title: Annotated[str, Query(alias='note-title', min_length=3, max_length=10)] = None,
+                      note_content: Annotated[str, Query(alias='note-content', min_length=3, max_length=10)] = None):
     found_notes = []
-    if note_title or note_content:
-        for note in notes_db:
-            if note_title.lower() in note['title'].lower() or note_content.lower() in note['content'].lower():
-                found_notes.append(note)
+    for note in notes_db:
+        if (note_title and note_title.lower() in note['title'].lower()) or \
+                (note_content and note_content.lower() in note['content'].lower()):
+            found_notes.append(note)
     return found_notes
 
 
 @app.get("/tags/search")
-async def search_tag(tag_name: str = None):
+async def search_tag(tag_name: Annotated[str, Query(alias='tag-name', min_length=3, max_length=10,)] = None):
     found_tags = []
     if tag_name:
         for tag in tags_db:
@@ -68,7 +69,7 @@ async def search_tag(tag_name: str = None):
 
 
 @app.get("/notes/{note_id}")
-async def get_note(note_id: int):
+async def get_note(note_id: Annotated[int, Path(ge=1)]):
     i, note = find_note_by_id(note_id)
     if note:
         return note
@@ -76,7 +77,7 @@ async def get_note(note_id: int):
 
 
 @app.get("/tags/{tag_id}")
-async def get_tag(tag_id: int):
+async def get_tag(tag_id: Annotated[int, Path(ge=1)]):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tag
@@ -96,33 +97,36 @@ async def add_note(note: NoteSchema):
 
 
 @app.post("/tags")
-async def add_tag(tag: List[TagSchema]):
+async def add_tag(tag: set[TagSchema]):
     add_tags_to_db(tag)
     return tag
 
 
 @app.put("/notes/{note_id}/tags")
-async def put_tag(note_id: int, tags: List[TagSchema]):
+async def put_tag(note_id: Annotated[int, Path(ge=1)], tags: set[TagSchema]):
+    add_tags_to_db(tags)
     i, note = find_note_by_id(note_id)
     if note:
         for tag in tags:
-            if tag.model_dump() not in note['tags']:
-                note['tags'].append(tag)
-                note['updated_at'] = datetime.now()
+            tag_as_dict = tag.model_dump()
+            if tag_as_dict not in note['tags']:
+                note['tags'].append(tag_as_dict)
+        note['updated_at'] = datetime.now()
         notes_db[i] = note
         return note
-    raise HTTPException(status_code=404, detail='Tag not found')
+    raise HTTPException(status_code=404, detail='Note not found')
 
 
 @app.delete("/notes/{note_id}/tags")
-async def remove_tag(note_id: int, tags: List[TagSchema]):
+async def remove_tag(note_id: Annotated[int, Path(ge=1)], tags: set[TagSchema]):
     i, note = find_note_by_id(note_id)
     if note:
         if note['tags']:
             for tag in tags:
-                if tag.model_dump() in note['tags']:
-                    note['tags'].remove(tag)
-                    note['updated_at'] = datetime.now()
+                tag_as_dict = tag.model_dump()
+                if tag_as_dict in note['tags']:
+                    note['tags'].remove(tag_as_dict)
+            note['updated_at'] = datetime.now()
             notes_db[i] = note
             return note
         raise HTTPException(status_code=400, detail="No tags to remove")
@@ -130,7 +134,7 @@ async def remove_tag(note_id: int, tags: List[TagSchema]):
 
 
 @app.put("/notes/{note_id}")
-async def update_note(note_id: int, new_note: NewNoteSchema):
+async def update_note(note_id: Annotated[int, Path(ge=1)], new_note: NewNoteSchema):
     i, note = find_note_by_id(note_id)
     if note:
         note.update({**new_note.model_dump(), 'updated_at': datetime.now()})
@@ -141,7 +145,7 @@ async def update_note(note_id: int, new_note: NewNoteSchema):
 
 
 @app.put("/tags/{tag_id}")
-async def update_tag(tag_id: int, new_tag: TagSchema):
+async def update_tag(tag_id: Annotated[int, Path(ge=1)], new_tag: TagSchema):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         tag.update({**new_tag.model_dump()})
@@ -151,7 +155,7 @@ async def update_tag(tag_id: int, new_tag: TagSchema):
 
 
 @app.delete("/notes/{note_id}")
-async def delete_note(note_id: int):
+async def delete_note(note_id: Annotated[int, Path(ge=1)]):
     i, note = find_note_by_id(note_id)
     if note:
         return notes_db.pop(i)
@@ -159,7 +163,7 @@ async def delete_note(note_id: int):
 
 
 @app.delete("/tags/{tag_id}")
-async def delete_tag(tag_id: int):
+async def delete_tag(tag_id: Annotated[int, Path(ge=1)]):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tags_db.pop(i)
