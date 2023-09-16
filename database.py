@@ -7,6 +7,7 @@ notes_db = [
         "tags": [{"tag_name": 'Personal'}],
         "created_at": "2023-09-11T12:00:00",
         "updated_at": "2023-09-11T12:00:00",
+        "owner": "johndoe"
     },
     {
         "id": 2,
@@ -15,6 +16,7 @@ notes_db = [
         "tags": [{"tag_name": "Work"}],
         "created_at": "2023-09-10T09:30:00",
         "updated_at": "2023-09-10T09:30:00",
+        "owner": "johndoe"
     },
     {
         "id": 3,
@@ -23,6 +25,7 @@ notes_db = [
         "tags": [{"tag_name": "Meeting"}],
         "created_at": "2023-09-09T15:45:00",
         "updated_at": "2023-09-09T15:45:00",
+        "owner": "alice"
     }
 ]
 
@@ -41,3 +44,20 @@ tags_db = [
         "tag_name": "Meeting"
     }
 ]
+
+users_db = {
+    "johndoe": {
+        "username": "johndoe",
+        "full_name": "John Doe",
+        "email": "johndoe@example.com",
+        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
+        'disabled': False
+    },
+    "alice": {
+        "username": "alice",
+        "full_name": "Alice Wonderson",
+        "email": "alice@example.com",
+        "hashed_password": "fakehashedsecret2",
+        "disabled": True
+    }
+}
