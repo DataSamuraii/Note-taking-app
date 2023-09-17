@@ -3,6 +3,15 @@
 ## Overview
 This API allows you to perform CRUD operations for notes and tags. Each note can have multiple tags.
 
+---
+
+### General Information
+
+- **Base URL**: `http://localhost:8000/`
+- **Authentication**: Bearer Token
+
+---
+
 ## Setup
 Install the required packages using pip:
 ```bash
@@ -16,100 +25,136 @@ uvicorn main:app --reload
 
 ## Endpoints
 
-### Notes
+### User Operations
 
-#### GET /notes
-Fetch all notes.
-- **Response**: List of notes
+#### POST `/login`
 
-#### POST /notes
-Add a new note.
-- **Request Body**: { "title": "string", "content": "string", "tags": [ { "tag_name": "string" } ] }
-- **Response**: Created note
+- **Description**: Login and get access token.
+- **Payload**: Form data with `username` and `password`.
+- **Response**: JSON object containing `access_token` and `token_type`.
+  
+#### POST `/registration`
 
-#### GET /notes/{note_id}
-Fetch a note by ID.
-- **Path Params**: `note_id` (integer)
-- **Response**: Note object
+- **Description**: Register a new user.
+- **Payload**: JSON object containing `username`, `email`, `full_name`, and `password`.
+- **Response**: JSON object representing the newly registered user.
 
-#### PUT /notes/{note_id}
-Update a note by ID.
-- **Path Params**: `note_id` (integer)
-- **Request Body**: { "title": "string", "content": "string", "tags": [ { "tag_name": "string" } ] }
-- **Response**: Updated note
+#### GET `/users`
 
-#### DELETE /notes/{note_id}
-Delete a note by ID.
-- **Path Params**: `note_id` (integer)
-- **Response**: Deleted note
+- **Description**: Retrieve all users.
+- **Response**: JSON array of users.
 
-#### GET /notes/search
-Search notes by title or content.
-- **Query Params**: `note_title` (string, optional), `note_content` (string, optional)
-- **Response**: List of matching notes
+#### GET `/users/me/`
 
-#### PUT /notes/{note_id}/tags
-Assign tags to a note by ID.
-- **Path Params**: `note_id` (integer)
-- **Request Body**: [ { "tag_name": "string" } ]
-- **Response**: Updated note
+- **Description**: Retrieve the current authenticated user's profile.
+- **Response**: JSON object representing the authenticated user.
 
-#### DELETE /notes/{note_id}/tags
-Remove tags from a note by ID.
-- **Path Params**: `note_id` (integer)
-- **Request Body**: [ { "tag_name": "string" } ]
-- **Response**: Updated note
+#### GET `/users/me/notes`
 
-### Tags
+- **Description**: Retrieve notes owned by the current authenticated user.
+- **Response**: JSON array of notes owned by the authenticated user.
 
-#### GET /tags
-Fetch all tags.
-- **Response**: List of tags
+#### GET `/users/me/tags`
 
-#### POST /tags
-Add new tags.
-- **Request Body**: [ { "tag_name": "string" } ]
-- **Response**: Created tags
+- **Description**: Retrieve tags owned by the current authenticated user.
+- **Response**: JSON array of tags owned by the authenticated user.
 
-#### GET /tags/{tag_id}
-Fetch a tag by ID.
-- **Path Params**: `tag_id` (integer)
-- **Response**: Tag object
+---
 
-#### PUT /tags/{tag_id}
-Update a tag by ID.
-- **Path Params**: `tag_id` (integer)
-- **Request Body**: { "tag_name": "string" }
-- **Response**: Updated tag
+### Note Operations
 
-#### DELETE /tags/{tag_id}
-Delete a tag by ID.
-- **Path Params**: `tag_id` (integer)
-- **Response**: Deleted tag
+#### GET `/notes`
 
-#### GET /tags/search
-Search tags by name.
-- **Query Params**: `tag_name` (string, optional)
-- **Response**: List of matching tags
+- **Description**: Retrieve all notes.
+- **Response**: JSON array of notes.
 
-## Schema
+#### GET `/notes/{note_id}`
 
-### Note Schema
-- `id`: integer
-- `title`: string
-- `content`: string
-- `created_at`: datetime string
-- `updated_at`: datetime string
-- `tags`: array of tag objects
+- **Description**: Retrieve a note by its ID.
+- **Parameters**: `note_id` (integer, path)
+- **Response**: JSON object representing the note.
 
-### Tag Schema
-- `id`: integer
-- `tag_name`: string
+#### POST `/notes/post`
 
-## Error Codes
-- `404`: Not Found
-- `400`: Bad Request
+- **Description**: Create a new note.
+- **Payload**: JSON object containing `title`, `content`, and optionally `tags`.
+- **Response**: JSON object representing the new note.
 
+#### PUT `/notes/{note_id}`
+
+- **Description**: Update a note by its ID.
+- **Parameters**: `note_id` (integer, path)
+- **Payload**: JSON object containing updated `title`, `content`, and optionally `tags`.
+- **Response**: JSON object representing the updated note.
+
+#### DELETE `/notes/{note_id}`
+
+- **Description**: Delete a note by its ID.
+- **Parameters**: `note_id` (integer, path)
+- **Response**: JSON object representing the deleted note.
+
+---
+
+### Tag Operations
+
+#### GET `/tags`
+
+- **Description**: Retrieve all tags.
+- **Response**: JSON array of tags.
+
+#### POST `/tags/post`
+
+- **Description**: Create new tags.
+- **Payload**: JSON array of tags.
+- **Response**: JSON array of the newly created tags.
+
+#### PUT `/tags/{tag_id}`
+
+- **Description**: Update a tag by its ID.
+- **Parameters**: `tag_id` (integer, path)
+- **Payload**: JSON object containing the updated `tag_name`.
+- **Response**: JSON object representing the updated tag.
+
+#### DELETE `/tags/{tag_id}`
+
+- **Description**: Delete a tag by its ID.
+- **Parameters**: `tag_id` (integer, path)
+- **Response**: JSON object representing the deleted tag.
+
+---
+
+This is a simplified documentation. You can generate detailed, interactive documentation using FastAPI's built-in Swagger UI or ReDoc by visiting `http://localhost:8000/docs` or `http://localhost:8000/redoc`, respectively.
+
+Certainly, Alex! Including a testing chapter in your documentation is a smart move. It helps both in ensuring the API works as expected and in providing example usages of your API endpoints. Here's how you can extend your documentation:
+
+---
+
+## Testing the API
+
+To test the API, we use HTTP requests in a `.http` file format, which can be run using tools like [HTTPie](https://httpie.io/) or IDEs like [JetBrains IDEs](https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html) that support this format.
+
+### How to Run the Tests
+
+1. Make sure your FastAPI server is running.
+2. Open `test_main.http` in your IDE.
+3. Run each HTTP request.
+
+### Environment Configuration
+
+To manage environment variables such as the JWT token, you can use an `http-client.env.json` file. This allows you to specify different environments and corresponding variables.
+
+**File: `http-client.env.json`**
+
+```json
+{
+  "dev": {
+    "token": ""
+  }
+}
+```
+
+In this file, the `token` under `dev` can be updated with an actual JWT token for authenticated requests. Make sure to replace the empty string with your actual token. To get your token, register first and save the token you receive in the response.
+
+---
 ## Future Work
 - Implement a real database instead of the mock database.
-- Add user authentication.
