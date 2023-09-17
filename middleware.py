@@ -44,7 +44,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     patterns = [
         r'/users/me/', r'/users/me/notes', r'/users/me/tags',
         r'/notes/post', r'/notes/\d+', r'/notes/\d+/tags',
-        r'tags/post', r'/tags/\d+'
+        r'/tags/post', r'/tags/\d+'
     ]
 
     async def dispatch(self, request: Request, call_next) -> Response:

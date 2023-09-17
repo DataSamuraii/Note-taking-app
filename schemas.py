@@ -1,5 +1,5 @@
 import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 
 
 class Token(BaseModel):
@@ -15,18 +15,19 @@ class User(BaseModel):
     username: str
     email: str | None = None
     full_name: str | None = None
-    disabled: bool | None = None
+    disabled: bool = False
 
 
 class UserInDB(User):
     hashed_password: str
 
 
+class UserRegistration(User):
+    password: str
+
+
 class TagIn(BaseModel):
     tag_name: str = Field(title="The name of the tag", min_length=3, max_length=10)
-
-    # Makes tags frozen to make them hashable (I have many checks for tag presence in set)
-    model_config = ConfigDict(frozen=True)
 
 
 class TagOut(TagIn):
@@ -36,7 +37,7 @@ class TagOut(TagIn):
 class NoteIn(BaseModel):
     title: str = Field(title="The title of the note", min_length=3, max_length=20)
     content: str = Field(title="The content of the note", min_length=3, max_length=1000)
-    tags: set[TagIn] | None = set()
+    tags: list[TagIn] | None = list()
 
 
 class NoteOut(NoteIn):
@@ -48,4 +49,4 @@ class NoteOut(NoteIn):
 class NewNote(BaseModel):
     title: str | None = Field(default=None, title="The title of the new note", min_length=3, max_length=20)
     content: str | None = Field(default=None, title="The content of the new note", min_length=3, max_length=1000)
-    tags: set[TagIn] | None = set()
+    tags: list[TagIn] | None = list()

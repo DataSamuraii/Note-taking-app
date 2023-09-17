@@ -21,8 +21,21 @@ GET http://127.0.0.1:8000/users/me/notes
 Accept: application/json
 Authorization: Bearer {{token}}
 ###
-
 PUT http://127.0.0.1:8000/notes/1
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "string1",
+  "content": "string1",
+  "tags": [
+    {"tag_name": "Foo"},
+    {"tag_name": "Bar"}
+  ]
+}
+###
+POST http://127.0.0.1:8000/notes/post
 Accept: application/json
 Content-Type: application/json
 Authorization: Bearer {{token}}
@@ -32,15 +45,26 @@ Authorization: Bearer {{token}}
   "content": "string",
   "tags": []
 }
-
 ###
-POST http://127.0.0.1:8000/notes
+POST http://127.0.0.1:8000/tags/post
 Accept: application/json
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
+[
+  {
+    "tag_name": "string"
+  }
+]
+###
+POST http://127.0.0.1:8000/registration
+Accept: application/json
+Content-Type: application/json
+
 {
-  "title": "string",
-  "content": "string",
-  "tags": []
+  "username": "string1",
+  "email": "string1",
+  "full_name": "string",
+  "disabled": false,
+  "password": "string"
 }

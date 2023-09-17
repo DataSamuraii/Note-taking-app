@@ -55,7 +55,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 
 def find_max_id(db: list) -> int:
-    max_id = db[-1]['id'] + 1 if db else 0
+    max_id = db[-1]["id"] + 1 if db else 0
     return max_id
 
 
@@ -73,13 +73,19 @@ def find_tag_by_id(tag_id: int) -> tuple[int, schemas.TagIn] | tuple[None, None]
     return None, None
 
 
-def add_tags_to_db(tags: set[schemas.TagIn], owner: str) -> None:
-    tag_names_set = {tag['tag_name'] for tag in tags_db}
+def add_tags_to_db(tags: list[schemas.TagIn], owner: str) -> list[schemas.TagOut]:
+    tags_list = []
+    tag_names_list = [tag['tag_name'] for tag in tags_db]
     for tag in tags:
-        if tag.tag_name not in tag_names_set:
+        if tag.tag_name not in tag_names_list:
             max_id = find_max_id(tags_db)
-            new_tag = {'id': max_id, 'tag_name': tag.tag_name, "owner": owner}
-            tags_db.append(new_tag)
+            new_tag = schemas.TagOut(**{'tag_name': tag.tag_name, "owner": owner})
+            tags_db.append({'id': max_id, **new_tag.model_dump()})
+            tags_list.append(new_tag)
+        else:
+            tag = schemas.TagOut(tag_name=tag.tag_name, owner=owner)
+            tags_list.append(tag)
+    return tags_list
 
 
 @app.post('/login', tags=['users'], response_model=schemas.Token)
@@ -94,6 +100,18 @@ async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depend
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token({'sub': user.username}, access_token_expires)
     return {'access_token': access_token, 'token_type': "bearer"}
+
+
+@app.post('/registration', tags=['users'], response_model=schemas.User)
+async def register_user(new_user: schemas.UserRegistration) -> schemas.User:
+    if new_user.username in users_db or any(user['email'] == new_user.email for user in users_db.values()):
+        raise HTTPException(status_code=400, detail="Username or email already registered")
+
+    hashed_password = get_password_hash(new_user.password)
+
+    new_user_model = schemas.UserInDB(**new_user.model_dump(), hashed_password=hashed_password)
+    users_db[new_user.username] = new_user_model.model_dump()
+    return new_user_model
 
 
 @app.get('/users', tags=['users'])
@@ -163,6 +181,7 @@ async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Requ
     i, note = find_note_by_id(note_id)
     if note:
         if note['owner'] == request.state.user.username:
+            add_tags_to_db(new_note.tags, request.state.user.username)
             update_data = {**new_note.model_dump(exclude_unset=True), 'updated_at': datetime.now()}
             note.update(jsonable_encoder(update_data))
             return note
@@ -181,7 +200,7 @@ async def delete_note(note_id: ValidID, request: Request) -> schemas.NoteOut:
 
 
 @app.put("/notes/{note_id}/tags", tags=['notes'])
-async def put_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Request) -> schemas.NoteOut:
+async def put_tag(note_id: ValidID, tags: list[schemas.TagIn], request: Request) -> schemas.NoteOut:
     add_tags_to_db(tags, request.state.user.username)
     i, note = find_note_by_id(note_id)
     if note:
@@ -217,7 +236,7 @@ async def remove_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Reques
 
 
 @app.get("/tags", tags=['tags'])
-async def get_tags() -> list[schemas.TagIn]:
+async def get_tags() -> list[schemas.TagOut]:
     return tags_db
 
 
@@ -234,7 +253,7 @@ async def search_tag(tag_name: Annotated[str, Query(alias='tag-name',
 
 
 @app.get("/tags/{tag_id}", tags=['tags'])
-async def get_tag(tag_id: ValidID) -> schemas.TagIn:
+async def get_tag(tag_id: ValidID) -> schemas.TagOut:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tag
@@ -242,13 +261,13 @@ async def get_tag(tag_id: ValidID) -> schemas.TagIn:
 
 
 @app.post("/tags/post", tags=['tags'])
-async def add_tag(tag: set[schemas.TagIn], request: Request) -> set[schemas.TagIn]:
-    add_tags_to_db(tag, request.state.user.username)
-    return tag
+async def add_tags(tag: list[schemas.TagIn], request: Request) -> list[schemas.TagOut]:
+    added_tags = add_tags_to_db(tag, request.state.user.username)
+    return added_tags
 
 
 @app.put("/tags/{tag_id}", tags=['tags'])
-async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagIn:
+async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagOut:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         tag.update({**new_tag.model_dump()})
@@ -257,7 +276,7 @@ async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagIn:
 
 
 @app.delete("/tags/{tag_id}", tags=['tags'])
-async def delete_tag(tag_id: ValidID) -> schemas.TagIn:
+async def delete_tag(tag_id: ValidID) -> schemas.TagOut:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tags_db.pop(i)
