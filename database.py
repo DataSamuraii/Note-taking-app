@@ -33,15 +33,18 @@ notes_db = [
 tags_db = [
     {
         "id": 1,
-        "tag_name": "Personal"
+        "tag_name": "Personal",
+        "owner": "johndoe"
     },
     {
         "id": 2,
-        "tag_name": "Work"
+        "tag_name": "Work",
+        "owner": "johndoe"
     },
     {
         "id": 3,
-        "tag_name": "Meeting"
+        "tag_name": "Meeting",
+        "owner": "alice"
     }
 ]
 

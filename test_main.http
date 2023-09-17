@@ -1,0 +1,46 @@
+# Test your FastAPI endpoints
+
+###
+GET http://127.0.0.1:8000/notes
+Accept: application/json
+###
+GET http://127.0.0.1:8000/notes/1
+Accept: application/json
+###
+POST http://127.0.0.1:8000/login
+Accept: application/json
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=&username=johndoe&password=secret&scope=&client_id=&client_secret=
+###
+GET http://127.0.0.1:8000/users/me
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+GET http://127.0.0.1:8000/users/me/notes
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+
+PUT http://127.0.0.1:8000/notes/1
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "string",
+  "content": "string",
+  "tags": []
+}
+
+###
+POST http://127.0.0.1:8000/notes
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "string",
+  "content": "string",
+  "tags": []
+}

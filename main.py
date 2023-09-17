@@ -1,46 +1,40 @@
 import schemas
-
 from database import notes_db, tags_db, users_db
+from middleware import AuthMiddleware, get_user
 
 from typing import Annotated
 from datetime import datetime, timedelta
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Path, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
 from passlib.context import CryptContext
-from jose import JWTError, jwt
+from jose import jwt
+
+from fastapi import Depends, FastAPI, HTTPException, Request, Query, Path, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.security import OAuth2PasswordRequestForm
 
 
 SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
-ALGORITHM = "HS256"
+ALGORITHM = 'HS256'
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
-oauth_scheme = OAuth2PasswordBearer(tokenUrl='login')
-
 app = FastAPI()
+app.add_middleware(AuthMiddleware)
+
 
 ValidID = Annotated[int, Path(ge=1)]
 
 
-def verify_password(plain_password, hashed_password):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def get_password_hash(plain_password):
+def get_password_hash(plain_password: str) -> str:
     return pwd_context.hash(plain_password)
 
 
-def get_user(db, username: str):
-    if username in db:
-        user_dict = db.get(username)
-        return schemas.UserInDB(**user_dict)
-
-
-def authenticate_user(user_db, username, password):
+def authenticate_user(user_db: dict, username: str, password: str) -> schemas.UserInDB | bool:
     user = get_user(user_db, username)
     if not user:
         return False
@@ -49,7 +43,7 @@ def authenticate_user(user_db, username, password):
     return user
 
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None):
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -60,57 +54,31 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return encoded_jwt
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth_scheme)]):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, ALGORITHM)
-        username = payload.get('sub')
-        if username is None:
-            raise credentials_exception
-        token_data = schemas.TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = get_user(users_db, token_data.username)
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-async def get_current_active_user(current_user: Annotated[schemas.User, Depends(get_current_user)]):
-    if current_user.disabled:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Inactive user')
-    return current_user
-
-
-def find_max_id(db) -> int:
+def find_max_id(db: list) -> int:
     max_id = db[-1]['id'] + 1 if db else 0
     return max_id
 
 
-def find_note_by_id(note_id: int) -> tuple[int, schemas.NoteSchemaOut] | tuple[None, None]:
+def find_note_by_id(note_id: int) -> tuple[int, schemas.NoteOut] | tuple[None, None]:
     for i, note in enumerate(notes_db):
         if note_id == note['id']:
             return i, note
     return None, None
 
 
-def find_tag_by_id(tag_id: int) -> tuple[int, schemas.TagSchema] | tuple[None, None]:
+def find_tag_by_id(tag_id: int) -> tuple[int, schemas.TagIn] | tuple[None, None]:
     for i, tag in enumerate(tags_db):
         if tag_id == tag['id']:
             return i, tag
     return None, None
 
 
-def add_tags_to_db(tags: set[schemas.TagSchema]) -> None:
+def add_tags_to_db(tags: set[schemas.TagIn], owner: str) -> None:
     tag_names_set = {tag['tag_name'] for tag in tags_db}
     for tag in tags:
         if tag.tag_name not in tag_names_set:
             max_id = find_max_id(tags_db)
-            new_tag = {'id': max_id, 'tag_name': tag.tag_name}
+            new_tag = {'id': max_id, 'tag_name': tag.tag_name, "owner": owner}
             tags_db.append(new_tag)
 
 
@@ -134,17 +102,22 @@ async def get_users() -> dict[str, schemas.User]:
 
 
 @app.get("/users/me/", tags=['users'], response_model=schemas.User)
-async def get_users_me(current_user: Annotated[schemas.User, Depends(get_current_active_user)]):
-    return current_user
+async def get_users_me(current_user: schemas.User) -> schemas.User:
+    return current_user.state.user
 
 
 @app.get('/users/me/notes', tags=['users'])
-async def get_own_notes(current_user: Annotated[schemas.User, Depends(get_current_active_user)]):
-    return [note for note in notes_db if note['owner'] == current_user.username]
+async def get_own_notes(current_user: schemas.User) -> list[schemas.NoteOut]:
+    return [note for note in notes_db if note['owner'] == current_user.state.user.username]
+
+
+@app.get("/users/me/tags", tags=['users'])
+async def get_own_tags(current_user: schemas.User) -> list[schemas.TagOut]:
+    return [tag for tag in tags_db if tag['owner'] == current_user.state.user.username]
 
 
 @app.get("/notes", tags=['notes'])
-async def get_notes() -> list[schemas.NoteSchemaOut]:
+async def get_notes() -> list[schemas.NoteOut]:
     return notes_db
 
 
@@ -164,75 +137,87 @@ async def search_note(note_title: Annotated[str, Query(alias='note-title',
 
 
 @app.get("/notes/{note_id}", tags=['notes'])
-async def get_note(note_id: ValidID) -> schemas.NoteSchemaOut:
+async def get_note(note_id: ValidID) -> schemas.NoteOut:
     i, note = find_note_by_id(note_id)
     if note:
         return note
     raise HTTPException(status_code=404, detail='Note not found')
 
 
-@app.post("/notes", tags=['notes'])
-async def add_note(note: schemas.NoteSchemaIn) -> schemas.NoteSchemaOut:
+@app.post("/notes/post", tags=['notes'])
+async def add_note(note: schemas.NoteIn, request: Request) -> schemas.NoteOut:
     max_id = find_max_id(notes_db)
     created_at = datetime.now()
-    add_tags_to_db(note.tags)
+    add_tags_to_db(note.tags, request.state.user.username)
 
-    note_model = schemas.NoteSchemaOut(**note.model_dump(), **{'created_at': created_at, 'updated_at': created_at})
+    note_model = schemas.NoteOut(**note.model_dump(),
+                                 **{'created_at': created_at,
+                                    'updated_at': created_at,
+                                    'owner': request.state.user.username})
     notes_db.append({'id': max_id, **note_model.model_dump()})
     return note_model
 
 
 @app.put("/notes/{note_id}", tags=['notes'])
-async def update_note(note_id: ValidID, new_note: schemas.NewNoteSchema) -> schemas.NoteSchemaOut:
+async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Request) -> schemas.NoteOut:
     i, note = find_note_by_id(note_id)
     if note:
-        update_data = {**new_note.model_dump(exclude_unset=True), 'updated_at': datetime.now()}
-        note.update(jsonable_encoder(update_data))
-        return note
-    raise HTTPException(status_code=404, detail="Note not found")
+        if note['owner'] == request.state.user.username:
+            update_data = {**new_note.model_dump(exclude_unset=True), 'updated_at': datetime.now()}
+            note.update(jsonable_encoder(update_data))
+            return note
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
 @app.delete("/notes/{note_id}", tags=['notes'])
-async def delete_note(note_id: ValidID) -> schemas.NoteSchemaOut:
+async def delete_note(note_id: ValidID, request: Request) -> schemas.NoteOut:
     i, note = find_note_by_id(note_id)
     if note:
-        return notes_db.pop(i)
-    raise HTTPException(status_code=404, detail="Note not found")
+        if note['owner'] == request.state.user.username:
+            return notes_db.pop(i)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
 @app.put("/notes/{note_id}/tags", tags=['notes'])
-async def put_tag(note_id: ValidID, tags: set[schemas.TagSchema]) -> schemas.NoteSchemaOut:
-    add_tags_to_db(tags)
+async def put_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Request) -> schemas.NoteOut:
+    add_tags_to_db(tags, request.state.user.username)
     i, note = find_note_by_id(note_id)
     if note:
-        for tag in tags:
-            tag_as_dict = tag.model_dump()
-            if tag_as_dict not in note['tags']:
-                note['tags'].append(tag_as_dict)
-        note['updated_at'] = datetime.now()
-        notes_db[i] = note
-        return note
-    raise HTTPException(status_code=404, detail='Note not found')
-
-
-@app.delete("/notes/{note_id}/tags", tags=['notes'])
-async def remove_tag(note_id: ValidID, tags: set[schemas.TagSchema]) -> schemas.NoteSchemaOut:
-    i, note = find_note_by_id(note_id)
-    if note:
-        if note['tags']:
+        if note['owner'] == request.state.user.username:
             for tag in tags:
                 tag_as_dict = tag.model_dump()
-                if tag_as_dict in note['tags']:
-                    note['tags'].remove(tag_as_dict)
+                if tag_as_dict not in note['tags']:
+                    note['tags'].append(tag_as_dict)
             note['updated_at'] = datetime.now()
             notes_db[i] = note
             return note
-        raise HTTPException(status_code=400, detail="No tags to remove")
-    raise HTTPException(status_code=404, detail="Note not found")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Note not found')
+
+
+@app.delete("/notes/{note_id}/tags", tags=['notes'])
+async def remove_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Request) -> schemas.NoteOut:
+    i, note = find_note_by_id(note_id)
+    if note:
+        if note['tags']:
+            if note['owner'] == request.state.user.username:
+                for tag in tags:
+                    tag_as_dict = tag.model_dump()
+                    if tag_as_dict in note['tags']:
+                        note['tags'].remove(tag_as_dict)
+                note['updated_at'] = datetime.now()
+                notes_db[i] = note
+                return note
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail='You are not authorized to update this note')
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tags to remove")
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
 @app.get("/tags", tags=['tags'])
-async def get_tags() -> list[schemas.TagSchema]:
+async def get_tags() -> list[schemas.TagIn]:
     return tags_db
 
 
@@ -249,21 +234,21 @@ async def search_tag(tag_name: Annotated[str, Query(alias='tag-name',
 
 
 @app.get("/tags/{tag_id}", tags=['tags'])
-async def get_tag(tag_id: ValidID) -> schemas.TagSchema:
+async def get_tag(tag_id: ValidID) -> schemas.TagIn:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tag
     raise HTTPException(status_code=404, detail='Tag not found')
 
 
-@app.post("/tags", tags=['tags'])
-async def add_tag(tag: set[schemas.TagSchema]) -> set[schemas.TagSchema]:
-    add_tags_to_db(tag)
+@app.post("/tags/post", tags=['tags'])
+async def add_tag(tag: set[schemas.TagIn], request: Request) -> set[schemas.TagIn]:
+    add_tags_to_db(tag, request.state.user.username)
     return tag
 
 
 @app.put("/tags/{tag_id}", tags=['tags'])
-async def update_tag(tag_id: ValidID, new_tag: schemas.TagSchema) -> schemas.TagSchema:
+async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagIn:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         tag.update({**new_tag.model_dump()})
@@ -272,7 +257,7 @@ async def update_tag(tag_id: ValidID, new_tag: schemas.TagSchema) -> schemas.Tag
 
 
 @app.delete("/tags/{tag_id}", tags=['tags'])
-async def delete_tag(tag_id: ValidID) -> schemas.TagSchema:
+async def delete_tag(tag_id: ValidID) -> schemas.TagIn:
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tags_db.pop(i)
