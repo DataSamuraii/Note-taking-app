@@ -12,8 +12,10 @@ class TokenData(BaseModel):
 
 
 class User(BaseModel):
-    username: str
-    email: str | None = None
+    username: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_]*$',
+                          min_length=8, max_length=16,)
+    email: str | None = Field(default=None, pattern=r'^[\w%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                              min_length=5, max_length=50,)
     full_name: str | None = None
     disabled: bool = False
 
@@ -23,7 +25,8 @@ class UserInDB(User):
 
 
 class UserRegistration(User):
-    password: str
+    password: str = Field(pattern=r'^[a-zA-Z][a-zA-Z0-9_]*$', min_length=8, max_length=16,
+                          description='Starts with a letter followed by letters, numbers, and underscores')
 
 
 class TagIn(BaseModel):

@@ -1,11 +1,17 @@
 # Test your FastAPI endpoints
 
 ###
-GET http://127.0.0.1:8000/notes
+POST http://127.0.0.1:8000/registration
 Accept: application/json
-###
-GET http://127.0.0.1:8000/notes/1
-Accept: application/json
+Content-Type: application/json
+
+{
+  "username": "string1",
+  "email": "string1",
+  "full_name": "string",
+  "disabled": false,
+  "password": "string"
+}
 ###
 POST http://127.0.0.1:8000/login
 Accept: application/json
@@ -20,6 +26,12 @@ Authorization: Bearer {{token}}
 GET http://127.0.0.1:8000/users/me/notes
 Accept: application/json
 Authorization: Bearer {{token}}
+###
+GET http://127.0.0.1:8000/notes
+Accept: application/json
+###
+GET http://127.0.0.1:8000/notes/1
+Accept: application/json
 ###
 PUT http://127.0.0.1:8000/notes/1
 Accept: application/json
@@ -56,15 +68,3 @@ Authorization: Bearer {{token}}
     "tag_name": "string"
   }
 ]
-###
-POST http://127.0.0.1:8000/registration
-Accept: application/json
-Content-Type: application/json
-
-{
-  "username": "string1",
-  "email": "string1",
-  "full_name": "string",
-  "disabled": false,
-  "password": "string"
-}

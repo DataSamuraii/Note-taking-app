@@ -103,7 +103,7 @@ async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depend
 
 
 @app.post('/registration', tags=['users'], response_model=schemas.User)
-async def register_user(new_user: schemas.UserRegistration) -> schemas.User:
+async def register_user(new_user: schemas.UserRegistration):
     if new_user.username in users_db or any(user['email'] == new_user.email for user in users_db.values()):
         raise HTTPException(status_code=400, detail="Username or email already registered")
 
@@ -120,7 +120,7 @@ async def get_users() -> dict[str, schemas.User]:
 
 
 @app.get("/users/me/", tags=['users'], response_model=schemas.User)
-async def get_users_me(current_user: schemas.User) -> schemas.User:
+async def get_users_me(current_user: schemas.User):
     return current_user.state.user
 
 
@@ -154,16 +154,16 @@ async def search_note(note_title: Annotated[str, Query(alias='note-title',
     return found_notes
 
 
-@app.get("/notes/{note_id}", tags=['notes'])
-async def get_note(note_id: ValidID) -> schemas.NoteOut:
+@app.get("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
+async def get_note(note_id: ValidID):
     i, note = find_note_by_id(note_id)
     if note:
         return note
     raise HTTPException(status_code=404, detail='Note not found')
 
 
-@app.post("/notes/post", tags=['notes'])
-async def add_note(note: schemas.NoteIn, request: Request) -> schemas.NoteOut:
+@app.post("/notes/post", tags=['notes'], response_model=schemas.NoteOut)
+async def add_note(note: schemas.NoteIn, request: Request):
     max_id = find_max_id(notes_db)
     created_at = datetime.now()
     add_tags_to_db(note.tags, request.state.user.username)
@@ -176,8 +176,8 @@ async def add_note(note: schemas.NoteIn, request: Request) -> schemas.NoteOut:
     return note_model
 
 
-@app.put("/notes/{note_id}", tags=['notes'])
-async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Request) -> schemas.NoteOut:
+@app.put("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
+async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Request):
     i, note = find_note_by_id(note_id)
     if note:
         if note['owner'] == request.state.user.username:
@@ -189,8 +189,8 @@ async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Requ
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
-@app.delete("/notes/{note_id}", tags=['notes'])
-async def delete_note(note_id: ValidID, request: Request) -> schemas.NoteOut:
+@app.delete("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
+async def delete_note(note_id: ValidID, request: Request):
     i, note = find_note_by_id(note_id)
     if note:
         if note['owner'] == request.state.user.username:
@@ -199,8 +199,8 @@ async def delete_note(note_id: ValidID, request: Request) -> schemas.NoteOut:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
-@app.put("/notes/{note_id}/tags", tags=['notes'])
-async def put_tag(note_id: ValidID, tags: list[schemas.TagIn], request: Request) -> schemas.NoteOut:
+@app.put("/notes/{note_id}/tags", tags=['notes'], response_model=schemas.NoteOut)
+async def put_tag(note_id: ValidID, tags: list[schemas.TagIn], request: Request):
     add_tags_to_db(tags, request.state.user.username)
     i, note = find_note_by_id(note_id)
     if note:
@@ -252,8 +252,8 @@ async def search_tag(tag_name: Annotated[str, Query(alias='tag-name',
     return found_tags
 
 
-@app.get("/tags/{tag_id}", tags=['tags'])
-async def get_tag(tag_id: ValidID) -> schemas.TagOut:
+@app.get("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
+async def get_tag(tag_id: ValidID):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tag
@@ -266,8 +266,8 @@ async def add_tags(tag: list[schemas.TagIn], request: Request) -> list[schemas.T
     return added_tags
 
 
-@app.put("/tags/{tag_id}", tags=['tags'])
-async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagOut:
+@app.put("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
+async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         tag.update({**new_tag.model_dump()})
@@ -275,8 +275,8 @@ async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn) -> schemas.TagOut:
     raise HTTPException(status_code=404, detail="Tag not found")
 
 
-@app.delete("/tags/{tag_id}", tags=['tags'])
-async def delete_tag(tag_id: ValidID) -> schemas.TagOut:
+@app.delete("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
+async def delete_tag(tag_id: ValidID):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tags_db.pop(i)
