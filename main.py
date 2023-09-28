@@ -139,38 +139,41 @@ async def search_note(note_title: Annotated[str, Query(alias='note-title',
 
 
 @app.get("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
-async def get_note(note_id: ValidID):
-    i, note = find_note_by_id(note_id)
-    if note:
-        return note
-    raise HTTPException(status_code=404, detail='Note not found')
+async def get_note(note_id: ValidID, session: Session = Depends(get_session)):
+    note = session.get(schemas.Note, note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail='Note not found')
+    return note
 
 
 @app.post("/notes/post", tags=['notes'], response_model=schemas.NoteRead)
-async def add_note(note: schemas.NoteCreate, request: Request):
-    max_id = find_max_id(notes_db)
-    created_at = datetime.now()
-    add_tags_to_db(note.tags, request.state.user.username)
+async def add_note(note: schemas.NoteCreate, request: Request, session: Session = Depends(get_session)):
+    created_at = datetime.utcnow()
+    note_model = schemas.Note(**note.dict(), **{'owner': request.state.user.id,
+                                                'created_at': created_at, 'updated_at': created_at})
 
-    note_model = schemas.NoteRead(**note.model_dump(),
-                                  **{'created_at': created_at,
-                                     'updated_at': created_at,
-                                     'owner': request.state.user.username})
-    notes_db.append({'id': max_id, **note_model.model_dump()})
+    session.add(note_model)
+    session.commit()
+    session.refresh(note_model)
     return note_model
 
 
 @app.put("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
-async def update_note(note_id: ValidID, new_note: schemas.NoteUpdate, request: Request):
-    i, note = find_note_by_id(note_id)
-    if note:
-        if note['owner'] == request.state.user.username:
-            add_tags_to_db(new_note.tags, request.state.user.username)
-            update_data = {**new_note.model_dump(exclude_unset=True), 'updated_at': datetime.now()}
-            note.update(jsonable_encoder(update_data))
-            return note
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+async def update_note(note_id: ValidID, new_note: schemas.NoteUpdate,
+                      request: Request, session: Session = Depends(get_session)):
+    db_note = session.get(schemas.Note, note_id)
+    if db_note is None:
+        raise HTTPException(status_code=404, detail='Note not found')
+    elif db_note.owner_id == request.state.user.id:
+        note_data = new_note.dict(exclude_unset=True)
+        for key, value in note_data.items():
+            setattr(db_note, key, value)
+        setattr(db_note, 'updated_at', datetime.utcnow())
+        session.add(db_note)
+        session.commit()
+        session.refresh(db_note)
+        return db_note
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
 
 
 @app.delete("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)

@@ -1,23 +1,21 @@
 import re
 
 from models import schemas
+from database.database import engine
 
 from jose import JWTError, jwt
 
 from fastapi import HTTPException, Request, Response, status
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from sqlmodel import Session, select
+
+
 SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
 ALGORITHM = 'HS256'
 
 
-def get_user(db: dict, username: str) -> schemas.UserRead:
-    if username in db:
-        user_dict = db.get(username)
-        return schemas.UserRead(**user_dict)
-
-
-def validate_token(token: str) -> schemas.UserRead | HTTPException:
+def validate_token(token: str) -> schemas.User | HTTPException:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -28,11 +26,12 @@ def validate_token(token: str) -> schemas.UserRead | HTTPException:
         username = payload.get('sub')
         if username is None:
             return credentials_exception
-        token_data = schemas.TokenData(username=username)
     except JWTError:
         return credentials_exception
 
-    user = get_user(users_db, token_data.username)
+    with Session(engine) as session:
+        exp = select(schemas.User).where(schemas.User.username == username)
+        user = session.exec(exp).one()
     if user is None:
         return credentials_exception
     return user

@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel, create_engine, Session
 
 
-mysql_url = "mysql+pymysql://root:password@localhost/dbname"
+mysql_url = "mysql+pymysql://root:ZA12092001za@localhost/note_app"
 engine = create_engine(mysql_url, echo=True)
 
 
