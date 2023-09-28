@@ -1,7 +1,6 @@
 import re
 
-import schemas
-from database import users_db
+from models import schemas
 
 from jose import JWTError, jwt
 
@@ -12,13 +11,13 @@ SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
 ALGORITHM = 'HS256'
 
 
-def get_user(db: dict, username: str) -> schemas.UserInDB:
+def get_user(db: dict, username: str) -> schemas.UserRead:
     if username in db:
         user_dict = db.get(username)
-        return schemas.UserInDB(**user_dict)
+        return schemas.UserRead(**user_dict)
 
 
-def validate_token(token: str) -> schemas.UserInDB | HTTPException:
+def validate_token(token: str) -> schemas.UserRead | HTTPException:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

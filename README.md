@@ -158,3 +158,5 @@ In this file, the `token` under `dev` can be updated with an actual JWT token fo
 ---
 ## Future Work
 - Implement a real database instead of the mock database.
+- Add metadata to API
+- Add Background task to send email to user email after registration and login

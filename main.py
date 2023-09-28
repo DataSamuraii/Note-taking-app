@@ -1,6 +1,8 @@
-import schemas
-from database import notes_db, tags_db, users_db
-from middleware import AuthMiddleware, get_user
+import uvicorn
+
+from models import schemas
+from database.database import create_db_and_tables, get_session
+from middleware.middleware import AuthMiddleware
 
 from typing import Annotated
 from datetime import datetime, timedelta
@@ -11,6 +13,9 @@ from jose import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, Query, Path, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordRequestForm
+
+from sqlmodel import Session, select, col
+from sqlalchemy.exc import IntegrityError
 
 
 SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
@@ -34,15 +39,6 @@ def get_password_hash(plain_password: str) -> str:
     return pwd_context.hash(plain_password)
 
 
-def authenticate_user(user_db: dict, username: str, password: str) -> schemas.UserInDB | bool:
-    user = get_user(user_db, username)
-    if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
-        return False
-    return user
-
-
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     if expires_delta:
@@ -54,107 +50,95 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return encoded_jwt
 
 
-def find_max_id(db: list) -> int:
-    max_id = db[-1]["id"] + 1 if db else 0
-    return max_id
-
-
-def find_note_by_id(note_id: int) -> tuple[int, schemas.NoteOut] | tuple[None, None]:
-    for i, note in enumerate(notes_db):
-        if note_id == note['id']:
-            return i, note
-    return None, None
-
-
-def find_tag_by_id(tag_id: int) -> tuple[int, schemas.TagIn] | tuple[None, None]:
-    for i, tag in enumerate(tags_db):
-        if tag_id == tag['id']:
-            return i, tag
-    return None, None
-
-
-def add_tags_to_db(tags: list[schemas.TagIn], owner: str) -> list[schemas.TagOut]:
-    tags_list = []
-    tag_names_list = [tag['tag_name'] for tag in tags_db]
-    for tag in tags:
-        if tag.tag_name not in tag_names_list:
-            max_id = find_max_id(tags_db)
-            new_tag = schemas.TagOut(**{'tag_name': tag.tag_name, "owner": owner})
-            tags_db.append({'id': max_id, **new_tag.model_dump()})
-            tags_list.append(new_tag)
-        else:
-            tag = schemas.TagOut(tag_name=tag.tag_name, owner=owner)
-            tags_list.append(tag)
-    return tags_list
+@app.on_event("startup")
+def on_startup():
+    print("Application startup")
+    create_db_and_tables()
 
 
 @app.post('/login', tags=['users'], response_model=schemas.Token)
-async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-    user = authenticate_user(users_db, form_data.username, form_data.password)
+async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+                          session: Session = Depends(get_session)):
+    exp = select(schemas.User).where(schemas.User.username == form_data.username)
+    user = session.exec(exp).first()
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token({'sub': user.username}, access_token_expires)
     return {'access_token': access_token, 'token_type': "bearer"}
 
 
-@app.post('/registration', tags=['users'], response_model=schemas.User)
-async def register_user(new_user: schemas.UserRegistration):
-    if new_user.username in users_db or any(user['email'] == new_user.email for user in users_db.values()):
-        raise HTTPException(status_code=400, detail="Username or email already registered")
-
+@app.post('/registration', tags=['users'], response_model=schemas.UserRead)
+async def register_user(new_user: schemas.UserRegister, session: Session = Depends(get_session)):
     hashed_password = get_password_hash(new_user.password)
+    db_user = schemas.User(**new_user.dict(), hashed_password=hashed_password)
 
-    new_user_model = schemas.UserInDB(**new_user.model_dump(), hashed_password=hashed_password)
-    users_db[new_user.username] = new_user_model.model_dump()
-    return new_user_model
-
-
-@app.get('/users', tags=['users'])
-async def get_users() -> dict[str, schemas.User]:
-    return users_db
-
-
-@app.get("/users/me/", tags=['users'], response_model=schemas.User)
-async def get_users_me(current_user: schemas.User):
-    return current_user.state.user
+    session.add(db_user)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already registered")
+    return db_user
 
 
-@app.get('/users/me/notes', tags=['users'])
-async def get_own_notes(current_user: schemas.User) -> list[schemas.NoteOut]:
-    return [note for note in notes_db if note['owner'] == current_user.state.user.username]
+@app.get('/users', tags=['users'], response_model=list[schemas.UserRead])
+async def get_users(session: Session = Depends(get_session)):
+    users = session.exec(select(schemas.User)).all()
+    return users
 
 
-@app.get("/users/me/tags", tags=['users'])
-async def get_own_tags(current_user: schemas.User) -> list[schemas.TagOut]:
-    return [tag for tag in tags_db if tag['owner'] == current_user.state.user.username]
+@app.get("/users/me/", tags=['users'], response_model=schemas.UserRead)
+async def get_users_me(request: Request):
+    return request.state.user
 
 
-@app.get("/notes", tags=['notes'])
-async def get_notes() -> list[schemas.NoteOut]:
-    return notes_db
+@app.get('/users/me/notes', tags=['users'], response_model=list[schemas.NoteRead])
+async def get_own_notes(request: Request, session: Session = Depends(get_session)):
+    exp = select(schemas.Note).where(schemas.Note.owner_id == request.state.user.id)
+    notes = session.exec(exp).all()
+    return notes
 
 
-@app.get("/notes/search", tags=['notes'])
+@app.get("/users/me/tags", tags=['users'], response_model=list[schemas.TagRead])
+async def get_own_tags(request: Request, session: Session = Depends(get_session)):
+    exp = select(schemas.Tag).where(schemas.Tag.owner_id == request.state.user.id)
+    tags = session.exec(exp).all()
+    return tags
+
+
+@app.get("/notes", tags=['notes'], response_model=list[schemas.NoteRead])
+async def get_notes(session: Session = Depends(get_session)):
+    notes = session.exec(select(schemas.Note)).all()
+    return notes
+
+
+@app.get("/notes/search", tags=['notes'], response_model=list[schemas.NoteRead])
 async def search_note(note_title: Annotated[str, Query(alias='note-title',
-                                                       min_length=3,
-                                                       max_length=10)] = None,
+                                                       min_length=3, max_length=10)] = None,
                       note_content: Annotated[str, Query(alias='note-content',
-                                                         min_length=3,
-                                                         max_length=10)] = None) -> list:
-    found_notes = []
-    for note in notes_db:
-        if (note_title and note_title.lower() in note['title'].lower()) or \
-                (note_content and note_content.lower() in note['content'].lower()):
-            found_notes.append(note)
+                                                         min_length=3, max_length=20)] = None,
+                      session: Session = Depends(get_session)):
+    exp = select(schemas.Note).where(col(schemas.Note.title).contains(note_title.lower()) |
+                                     col(schemas.Note.content).contains(note_content.lower()))
+    found_notes = session.exec(exp).all()
     return found_notes
 
 
-@app.get("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
+@app.get("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
 async def get_note(note_id: ValidID):
     i, note = find_note_by_id(note_id)
     if note:
@@ -162,22 +146,22 @@ async def get_note(note_id: ValidID):
     raise HTTPException(status_code=404, detail='Note not found')
 
 
-@app.post("/notes/post", tags=['notes'], response_model=schemas.NoteOut)
-async def add_note(note: schemas.NoteIn, request: Request):
+@app.post("/notes/post", tags=['notes'], response_model=schemas.NoteRead)
+async def add_note(note: schemas.NoteCreate, request: Request):
     max_id = find_max_id(notes_db)
     created_at = datetime.now()
     add_tags_to_db(note.tags, request.state.user.username)
 
-    note_model = schemas.NoteOut(**note.model_dump(),
-                                 **{'created_at': created_at,
-                                    'updated_at': created_at,
-                                    'owner': request.state.user.username})
+    note_model = schemas.NoteRead(**note.model_dump(),
+                                  **{'created_at': created_at,
+                                     'updated_at': created_at,
+                                     'owner': request.state.user.username})
     notes_db.append({'id': max_id, **note_model.model_dump()})
     return note_model
 
 
-@app.put("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
-async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Request):
+@app.put("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
+async def update_note(note_id: ValidID, new_note: schemas.NoteUpdate, request: Request):
     i, note = find_note_by_id(note_id)
     if note:
         if note['owner'] == request.state.user.username:
@@ -189,7 +173,7 @@ async def update_note(note_id: ValidID, new_note: schemas.NewNote, request: Requ
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
-@app.delete("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteOut)
+@app.delete("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
 async def delete_note(note_id: ValidID, request: Request):
     i, note = find_note_by_id(note_id)
     if note:
@@ -199,8 +183,8 @@ async def delete_note(note_id: ValidID, request: Request):
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
 
-@app.put("/notes/{note_id}/tags", tags=['notes'], response_model=schemas.NoteOut)
-async def put_tag(note_id: ValidID, tags: list[schemas.TagIn], request: Request):
+@app.put("/notes/{note_id}/tags", tags=['notes'], response_model=schemas.NoteRead)
+async def put_tag(note_id: ValidID, tags: list[schemas.TagCreate], request: Request):
     add_tags_to_db(tags, request.state.user.username)
     i, note = find_note_by_id(note_id)
     if note:
@@ -217,7 +201,7 @@ async def put_tag(note_id: ValidID, tags: list[schemas.TagIn], request: Request)
 
 
 @app.delete("/notes/{note_id}/tags", tags=['notes'])
-async def remove_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Request) -> schemas.NoteOut:
+async def remove_tag(note_id: ValidID, tags: set[schemas.TagCreate], request: Request) -> schemas.NoteRead:
     i, note = find_note_by_id(note_id)
     if note:
         if note['tags']:
@@ -236,7 +220,7 @@ async def remove_tag(note_id: ValidID, tags: set[schemas.TagIn], request: Reques
 
 
 @app.get("/tags", tags=['tags'])
-async def get_tags() -> list[schemas.TagOut]:
+async def get_tags() -> list[schemas.TagRead]:
     return tags_db
 
 
@@ -252,7 +236,7 @@ async def search_tag(tag_name: Annotated[str, Query(alias='tag-name',
     return found_tags
 
 
-@app.get("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
+@app.get("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
 async def get_tag(tag_id: ValidID):
     i, tag = find_tag_by_id(tag_id)
     if tag:
@@ -261,13 +245,13 @@ async def get_tag(tag_id: ValidID):
 
 
 @app.post("/tags/post", tags=['tags'])
-async def add_tags(tag: list[schemas.TagIn], request: Request) -> list[schemas.TagOut]:
+async def add_tags(tag: list[schemas.TagCreate], request: Request) -> list[schemas.TagRead]:
     added_tags = add_tags_to_db(tag, request.state.user.username)
     return added_tags
 
 
-@app.put("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
-async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn):
+@app.put("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
+async def update_tag(tag_id: ValidID, new_tag: schemas.TagCreate):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         tag.update({**new_tag.model_dump()})
@@ -275,9 +259,14 @@ async def update_tag(tag_id: ValidID, new_tag: schemas.TagIn):
     raise HTTPException(status_code=404, detail="Tag not found")
 
 
-@app.delete("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagOut)
+@app.delete("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
 async def delete_tag(tag_id: ValidID):
     i, tag = find_tag_by_id(tag_id)
     if tag:
         return tags_db.pop(i)
     raise HTTPException(status_code=404, detail="Tag not found")
+
+# This is added for running the module manually to have access to debugger and breakpoint
+# To run the server, run this in Terminal: uvicorn app:main --reload
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
