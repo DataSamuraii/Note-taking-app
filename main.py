@@ -1,4 +1,6 @@
 import uvicorn
+import os
+from dotenv import load_dotenv
 
 from models import schemas
 from database.database import create_db_and_tables, get_session
@@ -11,16 +13,16 @@ from passlib.context import CryptContext
 from jose import jwt
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Query, Path, status
-from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordRequestForm
 
 from sqlmodel import Session, select, col
 from sqlalchemy.exc import IntegrityError
 
+load_dotenv()
 
-SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
-ALGORITHM = 'HS256'
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))  # Default to 30 if not set
 
 pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
@@ -52,8 +54,21 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 @app.on_event("startup")
 def on_startup():
-    print("Application startup")
     create_db_and_tables()
+
+
+@app.post('/registration', tags=['users'], response_model=schemas.UserRead)
+async def register_user(new_user: schemas.UserRegister, session: Session = Depends(get_session)):
+    hashed_password = get_password_hash(new_user.password)
+    db_user = schemas.User(**new_user.dict(), hashed_password=hashed_password)
+
+    session.add(db_user)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status_code=400, detail="Username or email already registered")
+    return db_user
 
 
 @app.post('/login', tags=['users'], response_model=schemas.Token)
@@ -79,20 +94,6 @@ async def login_for_token(form_data: Annotated[OAuth2PasswordRequestForm, Depend
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token({'sub': user.username}, access_token_expires)
     return {'access_token': access_token, 'token_type': "bearer"}
-
-
-@app.post('/registration', tags=['users'], response_model=schemas.UserRead)
-async def register_user(new_user: schemas.UserRegister, session: Session = Depends(get_session)):
-    hashed_password = get_password_hash(new_user.password)
-    db_user = schemas.User(**new_user.dict(), hashed_password=hashed_password)
-
-    session.add(db_user)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(status_code=400, detail="Username or email already registered")
-    return db_user
 
 
 @app.get('/users', tags=['users'], response_model=list[schemas.UserRead])
@@ -149,7 +150,7 @@ async def get_note(note_id: ValidID, session: Session = Depends(get_session)):
 @app.post("/notes/post", tags=['notes'], response_model=schemas.NoteRead)
 async def add_note(note: schemas.NoteCreate, request: Request, session: Session = Depends(get_session)):
     created_at = datetime.utcnow()
-    note_model = schemas.Note(**note.dict(), **{'owner': request.state.user.id,
+    note_model = schemas.Note(**note.dict(), **{'owner_id': request.state.user.id,
                                                 'created_at': created_at, 'updated_at': created_at})
 
     session.add(note_model)
@@ -158,116 +159,149 @@ async def add_note(note: schemas.NoteCreate, request: Request, session: Session 
     return note_model
 
 
-@app.put("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
+@app.patch("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
 async def update_note(note_id: ValidID, new_note: schemas.NoteUpdate,
                       request: Request, session: Session = Depends(get_session)):
     db_note = session.get(schemas.Note, note_id)
     if db_note is None:
         raise HTTPException(status_code=404, detail='Note not found')
-    elif db_note.owner_id == request.state.user.id:
-        note_data = new_note.dict(exclude_unset=True)
-        for key, value in note_data.items():
-            setattr(db_note, key, value)
-        setattr(db_note, 'updated_at', datetime.utcnow())
-        session.add(db_note)
-        session.commit()
-        session.refresh(db_note)
-        return db_note
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+
+    if db_note.owner_id != request.state.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+
+    note_data = new_note.dict(exclude_unset=True)
+    for key, value in note_data.items():
+        setattr(db_note, key, value)
+    setattr(db_note, 'updated_at', datetime.utcnow())
+    session.add(db_note)
+    session.commit()
+    session.refresh(db_note)
+    return db_note
 
 
 @app.delete("/notes/{note_id}", tags=['notes'], response_model=schemas.NoteRead)
-async def delete_note(note_id: ValidID, request: Request):
-    i, note = find_note_by_id(note_id)
-    if note:
-        if note['owner'] == request.state.user.username:
-            return notes_db.pop(i)
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+async def delete_note(note_id: ValidID, request: Request, session: Session = Depends(get_session)):
+    db_note = session.get(schemas.Note, note_id)
+    if db_note is None:
+        raise HTTPException(status_code=404, detail='Note not found')
+
+    if db_note.owner_id != request.state.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to delete this note')
+
+    session.delete(db_note)
+    session.commit()
+    return db_note
 
 
-@app.put("/notes/{note_id}/tags", tags=['notes'], response_model=schemas.NoteRead)
-async def put_tag(note_id: ValidID, tags: list[schemas.TagCreate], request: Request):
-    add_tags_to_db(tags, request.state.user.username)
-    i, note = find_note_by_id(note_id)
-    if note:
-        if note['owner'] == request.state.user.username:
-            for tag in tags:
-                tag_as_dict = tag.model_dump()
-                if tag_as_dict not in note['tags']:
-                    note['tags'].append(tag_as_dict)
-            note['updated_at'] = datetime.now()
-            notes_db[i] = note
-            return note
+@app.post("/notes/{note_id}/tags", tags=['notes'], response_model=schemas.NoteUpdateTags)
+async def add_tags_to_note(note_id: ValidID, tag_update: schemas.NoteUpdateTags,
+                           request: Request, session: Session = Depends(get_session)):
+    db_note = session.get(schemas.Note, note_id)
+    if db_note is None:
+        raise HTTPException(status_code=404, detail='Note not found')
+
+    if db_note.owner_id != request.state.user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Note not found')
+
+    for tag_id in tag_update.tag_ids:
+        exp = select(schemas.NoteTagLink).where((schemas.NoteTagLink.note_id == note_id) &
+                                                (schemas.NoteTagLink.tag_id == tag_id))
+        existing_link = session.exec(exp).first()
+        if existing_link is None:
+            link = schemas.NoteTagLink(note_id=note_id, tag_id=tag_id)
+            session.add(link)
+    session.commit()
+
+    return tag_update
 
 
 @app.delete("/notes/{note_id}/tags", tags=['notes'])
-async def remove_tag(note_id: ValidID, tags: set[schemas.TagCreate], request: Request) -> schemas.NoteRead:
-    i, note = find_note_by_id(note_id)
-    if note:
-        if note['tags']:
-            if note['owner'] == request.state.user.username:
-                for tag in tags:
-                    tag_as_dict = tag.model_dump()
-                    if tag_as_dict in note['tags']:
-                        note['tags'].remove(tag_as_dict)
-                note['updated_at'] = datetime.now()
-                notes_db[i] = note
-                return note
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail='You are not authorized to update this note')
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No tags to remove")
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+async def remove_tag(note_id: ValidID, tag_remove: schemas.NoteUpdateTags,
+                     request: Request, session: Session = Depends(get_session)):
+    db_note = session.get(schemas.Note, note_id)
+    if db_note is None:
+        raise HTTPException(status_code=404, detail='Note not found')
+
+    if db_note.owner_id != request.state.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this note')
+
+    for tag_id in tag_remove.tag_ids:
+        exp = select(schemas.NoteTagLink).where((schemas.NoteTagLink.note_id == note_id) &
+                                                (schemas.NoteTagLink.tag_id == tag_id))
+        existing_link = session.exec(exp).first()
+        if existing_link:
+            session.delete(existing_link)
+
+    session.commit()
+
+    return tag_remove
 
 
-@app.get("/tags", tags=['tags'])
-async def get_tags() -> list[schemas.TagRead]:
-    return tags_db
+@app.get("/tags", tags=['tags'], response_model=list[schemas.TagRead])
+async def get_tags(session: Session = Depends(get_session)):
+    tags = session.exec(select(schemas.Tag)).all()
+    return tags
 
 
 @app.get("/tags/search", tags=['tags'])
-async def search_tag(tag_name: Annotated[str, Query(alias='tag-name',
-                                                    min_length=3,
-                                                    max_length=10,)] = None) -> list:
-    found_tags = []
-    if tag_name:
-        for tag in tags_db:
-            if tag_name.lower() in tag['tag_name'].lower():
-                found_tags.append(tag)
+async def search_tag(tag_name: Annotated[str, Query(alias='tag-name', min_length=3, max_length=10,)] = None,
+                     session: Session = Depends(get_session)):
+    exp = select(schemas.Tag).where(col(schemas.Tag.tag_name).contains(tag_name.lower()))
+    found_tags = session.exec(exp).all()
     return found_tags
 
 
 @app.get("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
-async def get_tag(tag_id: ValidID):
-    i, tag = find_tag_by_id(tag_id)
-    if tag:
-        return tag
-    raise HTTPException(status_code=404, detail='Tag not found')
+async def get_tag(tag_id: ValidID, session: Session = Depends(get_session)):
+    db_tag = session.get(schemas.Tag, tag_id)
+    if db_tag is None:
+        raise HTTPException(status_code=404, detail='Tag not found')
+    return db_tag
 
 
-@app.post("/tags/post", tags=['tags'])
-async def add_tags(tag: list[schemas.TagCreate], request: Request) -> list[schemas.TagRead]:
-    added_tags = add_tags_to_db(tag, request.state.user.username)
-    return added_tags
+@app.post("/tags/post", tags=['tags'], response_model=schemas.TagRead)
+async def add_tags(tag: schemas.TagCreate, request: Request, session: Session = Depends(get_session)):
+    tag_model = schemas.Tag(**tag.dict(), **{'owner_id': request.state.user.id})
+
+    session.add(tag_model)
+    session.commit()
+    session.refresh(tag_model)
+    return tag_model
 
 
-@app.put("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
-async def update_tag(tag_id: ValidID, new_tag: schemas.TagCreate):
-    i, tag = find_tag_by_id(tag_id)
-    if tag:
-        tag.update({**new_tag.model_dump()})
-        return tag
-    raise HTTPException(status_code=404, detail="Tag not found")
+@app.patch("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
+async def update_tag(tag_id: ValidID, new_tag: schemas.TagCreate,
+                     request: Request, session: Session = Depends(get_session)):
+    db_tag = session.get(schemas.Tag, tag_id)
+    if db_tag is None:
+        raise HTTPException(status_code=404, detail='Tag not found')
+
+    if db_tag.owner_id != request.state.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this tag')
+
+    tag_data = new_tag.dict(exclude_unset=True)
+    for key, value in tag_data.items():
+        setattr(db_tag, key, value)
+
+    session.add(db_tag)
+    session.commit()
+    session.refresh(db_tag)
+    return db_tag
 
 
 @app.delete("/tags/{tag_id}", tags=['tags'], response_model=schemas.TagRead)
-async def delete_tag(tag_id: ValidID):
-    i, tag = find_tag_by_id(tag_id)
-    if tag:
-        return tags_db.pop(i)
-    raise HTTPException(status_code=404, detail="Tag not found")
+async def delete_tag(tag_id: ValidID, request: Request, session: Session = Depends(get_session)):
+    db_tag = session.get(schemas.Tag, tag_id)
+    if db_tag is None:
+        raise HTTPException(status_code=404, detail='Tag not found')
+
+    if db_tag.owner_id != request.state.user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='You are not authorized to update this tag')
+
+    session.delete(db_tag)
+    session.commit()
+    return db_tag
+
 
 # This is added for running the module manually to have access to debugger and breakpoint
 # To run the server, run this in Terminal: uvicorn app:main --reload

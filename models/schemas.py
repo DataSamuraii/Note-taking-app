@@ -8,30 +8,18 @@ class Token(SQLModel):
     token_type: str
 
 
-class TokenData(SQLModel):
-    username: str | None = None
-
-
-class NoteTagLink(SQLModel, table=True):
-    note_id: int = Field(foreign_key="note.id", primary_key=True)
-    tag_id: int = Field(foreign_key="tag.id", primary_key=True)
-
-    note: 'Note' = Relationship(back_populates="tags_link")
-    tag: 'Tag' = Relationship(back_populates="notes_link")
-
-
 class UserBase(SQLModel):
     username: str = Field(regex=r'^[a-zA-Z][a-zA-Z0-9_]*$',
-                          min_length=8, max_length=16, unique=True)
+                          min_length=3, max_length=16, unique=True)
     email: str | None = Field(default=None, regex=r'^[\w%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
                               min_length=5, max_length=50, unique=True)
     full_name: str | None = None
-    disabled: bool = False
 
 
 class User(UserBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     hashed_password: str
+    disabled: bool = False
 
 
 class UserCreate(UserBase):
@@ -47,8 +35,16 @@ class UserRegister(UserBase):
                           description='Starts with a letter followed by letters, numbers, and underscores')
 
 
+class NoteTagLink(SQLModel, table=True):
+    note_id: int = Field(foreign_key="note.id", primary_key=True)
+    tag_id: int = Field(foreign_key="tag.id", primary_key=True)
+
+    note: 'Note' = Relationship(back_populates="tags_link")
+    tag: 'Tag' = Relationship(back_populates="notes_link")
+
+
 class TagBase(SQLModel):
-    tag_name: str = Field(title="The name of the tag", min_length=3, max_length=10)
+    tag_name: str = Field(title="The name of the tag", min_length=3, max_length=20)
 
 
 class Tag(TagBase, table=True):
@@ -64,7 +60,7 @@ class TagCreate(TagBase):
 
 class TagRead(TagBase):
     id: int
-    owner: str
+    owner_id: str
 
 
 class NoteBase(SQLModel):
@@ -87,11 +83,15 @@ class NoteCreate(NoteBase):
 
 class NoteRead(NoteBase):
     id: int
+    owner_id: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
-    owner_id: int
 
 
 class NoteUpdate(SQLModel):
     title: str | None = Field(default=None, title="The title of the new note", min_length=3, max_length=20)
     content: str | None = Field(default=None, title="The content of the new note", min_length=3, max_length=1000)
+
+
+class NoteUpdateTags(SQLModel):
+    tag_ids: list[int]

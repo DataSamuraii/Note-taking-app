@@ -1,14 +1,14 @@
 # FastAPI Notes and Tags API Documentation
 
 ## Overview
-This API allows you to perform CRUD operations for notes and tags. Each note can have multiple tags.
+A FastAPI-based application for managing notes and tags, where each note can have multiple tags. Users can register, login, and perform CRUD operations on notes and tags.
 
 ---
 
 ### General Information
 
 - **Base URL**: `http://localhost:8000/`
-- **Authentication**: Bearer Token
+- **Authentication**: Bearer Token (JWT)
 
 ---
 
@@ -23,40 +23,45 @@ Run the FastAPI application:
 uvicorn main:app --reload
 ```
 
+---
+
 ## Endpoints
 
 ### User Operations
 
 #### POST `/login`
 
-- **Description**: Login and get access token.
+- **Description**: Log in and obtain an access token.
 - **Payload**: Form data with `username` and `password`.
 - **Response**: JSON object containing `access_token` and `token_type`.
-  
+
 #### POST `/registration`
 
 - **Description**: Register a new user.
-- **Payload**: JSON object containing `username`, `email`, `full_name`, and `password`.
+- **Payload**: JSON object containing `username`, `email` (optional), `full_name` (optional), and `password`.
 - **Response**: JSON object representing the newly registered user.
 
 #### GET `/users`
 
-- **Description**: Retrieve all users.
+- **Description**: Retrieve all users. (No authentication required)
 - **Response**: JSON array of users.
 
 #### GET `/users/me/`
 
 - **Description**: Retrieve the current authenticated user's profile.
+- **Authentication**: Required
 - **Response**: JSON object representing the authenticated user.
 
 #### GET `/users/me/notes`
 
 - **Description**: Retrieve notes owned by the current authenticated user.
+- **Authentication**: Required
 - **Response**: JSON array of notes owned by the authenticated user.
 
 #### GET `/users/me/tags`
 
 - **Description**: Retrieve tags owned by the current authenticated user.
+- **Authentication**: Required
 - **Response**: JSON array of tags owned by the authenticated user.
 
 ---
@@ -65,68 +70,80 @@ uvicorn main:app --reload
 
 #### GET `/notes`
 
-- **Description**: Retrieve all notes.
+- **Description**: Retrieve all notes. (No authentication required)
 - **Response**: JSON array of notes.
 
 #### GET `/notes/{note_id}`
 
 - **Description**: Retrieve a note by its ID.
 - **Parameters**: `note_id` (integer, path)
+- **Authentication**: Required if accessing a note owned by another user
 - **Response**: JSON object representing the note.
 
 #### POST `/notes/post`
 
 - **Description**: Create a new note.
-- **Payload**: JSON object containing `title`, `content`, and optionally `tags`.
+- **Payload**: JSON object containing `title` and `content`.
+- **Authentication**: Required
 - **Response**: JSON object representing the new note.
 
-#### PUT `/notes/{note_id}`
+#### PATCH `/notes/{note_id}`
 
 - **Description**: Update a note by its ID.
 - **Parameters**: `note_id` (integer, path)
-- **Payload**: JSON object containing updated `title`, `content`, and optionally `tags`.
+- **Payload**: JSON object containing updated `title` and/or `content`.
+- **Authentication**: Required
 - **Response**: JSON object representing the updated note.
 
 #### DELETE `/notes/{note_id}`
 
 - **Description**: Delete a note by its ID.
 - **Parameters**: `note_id` (integer, path)
+- **Authentication**: Required
 - **Response**: JSON object representing the deleted note.
 
 ---
 
 ### Tag Operations
 
+Note: Tag operations are not clearly defined in the provided code. Below are assumed endpoints based on common practices.
+
 #### GET `/tags`
 
-- **Description**: Retrieve all tags.
+- **Description**: Retrieve all tags. (No authentication required)
 - **Response**: JSON array of tags.
 
 #### POST `/tags/post`
 
 - **Description**: Create new tags.
-- **Payload**: JSON array of tags.
-- **Response**: JSON array of the newly created tags.
+- **Payload**: JSON object containing `tag_name`.
+- **Authentication**: Required
+- **Response**: JSON object representing the newly created tag.
 
-#### PUT `/tags/{tag_id}`
+#### PATCH `/tags/{tag_id}`
 
 - **Description**: Update a tag by its ID.
 - **Parameters**: `tag_id` (integer, path)
 - **Payload**: JSON object containing the updated `tag_name`.
+- **Authentication**: Required
 - **Response**: JSON object representing the updated tag.
 
 #### DELETE `/tags/{tag_id}`
 
 - **Description**: Delete a tag by its ID.
 - **Parameters**: `tag_id` (integer, path)
+- **Authentication**: Required
 - **Response**: JSON object representing the deleted tag.
 
 ---
 
-This is a simplified documentation. You can generate detailed, interactive documentation using FastAPI's built-in Swagger UI or ReDoc by visiting `http://localhost:8000/docs` or `http://localhost:8000/redoc`, respectively.
+For more detailed and interactive documentation, utilize FastAPI's built-in Swagger UI or ReDoc by visiting `http://localhost:8000/docs` or `http://localhost:8000/redoc`, respectively.
 
-Certainly, Alex! Including a testing chapter in your documentation is a smart move. It helps both in ensuring the API works as expected and in providing example usages of your API endpoints. Here's how you can extend your documentation:
-
+## Future Work
+- Implement a real database instead of the mock database.
+- Add metadata to the API.
+- Introduce background tasks for sending emails to users upon registration and login.
+- Enhance exception handling throughout the API.
 ---
 
 ## Testing the API
@@ -157,6 +174,7 @@ In this file, the `token` under `dev` can be updated with an actual JWT token fo
 
 ---
 ## Future Work
-- Implement a real database instead of the mock database.
-- Add metadata to API
+- ~~Implement a real database instead of the mock database.~~
+- Add Metadata to API
 - Add Background task to send email to user email after registration and login
+- Add Exception handling

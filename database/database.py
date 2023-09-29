@@ -1,7 +1,11 @@
+import os
+from dotenv import load_dotenv
+
 from sqlmodel import SQLModel, create_engine, Session
 
+load_dotenv()
 
-mysql_url = "mysql+pymysql://root:ZA12092001za@localhost/note_app"
+mysql_url = os.getenv("DB_URL")
 engine = create_engine(mysql_url, echo=True)
 
 

@@ -1,4 +1,6 @@
 import re
+import os
+from dotenv import load_dotenv
 
 from models import schemas
 from database.database import engine
@@ -10,9 +12,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from sqlmodel import Session, select
 
+load_dotenv()
 
-SECRET_KEY = '8a15f7937b03471c75a2cf525ed5e4172af0cd9b2c8fa4c9449e2c7265a9c1d0'
-ALGORITHM = 'HS256'
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
 
 
 def validate_token(token: str) -> schemas.User | HTTPException:
@@ -32,8 +35,10 @@ def validate_token(token: str) -> schemas.User | HTTPException:
     with Session(engine) as session:
         exp = select(schemas.User).where(schemas.User.username == username)
         user = session.exec(exp).one()
+
     if user is None:
         return credentials_exception
+
     return user
 
 

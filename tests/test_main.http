@@ -1,5 +1,5 @@
 # Test your FastAPI endpoints
-
+USERS
 ###
 POST http://127.0.0.1:8000/registration
 Accept: application/json
@@ -17,7 +17,10 @@ POST http://127.0.0.1:8000/login
 Accept: application/json
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=&username=johndoe&password=secret&scope=&client_id=&client_secret=
+grant_type=&username=FeB&password=dCsdrTUyH8zpKgBs&scope=&client_id=&client_secret=
+###
+GET http://127.0.0.1:8000/users
+Accept: application/json
 ###
 GET http://127.0.0.1:8000/users/me
 Accept: application/json
@@ -27,24 +30,35 @@ GET http://127.0.0.1:8000/users/me/notes
 Accept: application/json
 Authorization: Bearer {{token}}
 ###
+GET http://127.0.0.1:8000/users/me/tags
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+
+NOTES
+###
 GET http://127.0.0.1:8000/notes
 Accept: application/json
 ###
-GET http://127.0.0.1:8000/notes/1
+GET http://127.0.0.1:8000/notes/search?note-title=gro&note-content=pro
 Accept: application/json
 ###
-PUT http://127.0.0.1:8000/notes/1
+GET http://127.0.0.1:8000/notes/4
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+DELETE http://127.0.0.1:8000/notes/4
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+PATCH http://127.0.0.1:8000/notes/4
 Accept: application/json
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
 {
   "title": "string1",
-  "content": "string1",
-  "tags": [
-    {"tag_name": "Foo"},
-    {"tag_name": "Bar"}
-  ]
+  "content": "string1"
 }
 ###
 POST http://127.0.0.1:8000/notes/post
@@ -54,8 +68,55 @@ Authorization: Bearer {{token}}
 
 {
   "title": "string",
-  "content": "string",
-  "tags": []
+  "content": "string"
+}
+###
+POST http://127.0.0.1:8000/notes/4/tags
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tag_ids": [
+    5, 6
+  ]
+}
+###
+DELETE http://127.0.0.1:8000/notes/4/tags
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tag_ids": [
+    5
+  ]
+}
+###
+
+TAGS
+###
+GET http://127.0.0.1:8000/tags
+Accept: application/json
+###
+GET http://127.0.0.1:8000/tags/search?tag-name=str
+Accept: application/json
+###
+GET http://127.0.0.1:8000/tags/5
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+DELETE http://127.0.0.1:8000/tags/4
+Accept: application/json
+Authorization: Bearer {{token}}
+###
+PATCH http://127.0.0.1:8000/tags/5
+Accept: application/json
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tag_name": "string1"
 }
 ###
 POST http://127.0.0.1:8000/tags/post
@@ -63,8 +124,6 @@ Accept: application/json
 Content-Type: application/json
 Authorization: Bearer {{token}}
 
-[
-  {
-    "tag_name": "string"
-  }
-]
+{
+  "tag_name": "string"
+}
