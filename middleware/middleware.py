@@ -1,16 +1,18 @@
-import re
+# Standard library imports
 import os
+import re
+
+# Related third-party imports
 from dotenv import load_dotenv
-
-from models import schemas
-from database.database import engine
-
-from jose import JWTError, jwt
-
 from fastapi import HTTPException, Request, Response, status
+from jose import JWTError, jwt
+from sqlmodel import Session, select
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from sqlmodel import Session, select
+# Local application/library specific imports
+from database.database import engine
+from models import schemas
+
 
 load_dotenv()
 

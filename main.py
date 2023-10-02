@@ -1,22 +1,22 @@
-import uvicorn
+# Standard library imports
 import os
-from dotenv import load_dotenv
-
-from models import schemas
-from database.database import create_db_and_tables, get_session
-from middleware.middleware import AuthMiddleware
-
-from typing import Annotated
 from datetime import datetime, timedelta
+from typing import Annotated
 
-from passlib.context import CryptContext
-from jose import jwt
-
+# Related third-party imports
+import uvicorn
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Query, Path, status
 from fastapi.security import OAuth2PasswordRequestForm
-
+from jose import jwt
+from passlib.context import CryptContext
 from sqlmodel import Session, select, col
 from sqlalchemy.exc import IntegrityError
+
+# Local application/library specific imports
+from database.database import create_db_and_tables, get_session
+from middleware.middleware import AuthMiddleware
+from models import schemas
 
 load_dotenv()
 

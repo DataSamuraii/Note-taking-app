@@ -1,6 +1,8 @@
+# Standard library imports
 import os
-from dotenv import load_dotenv
 
+# Related third-party imports
+from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine, Session
 
 load_dotenv()
