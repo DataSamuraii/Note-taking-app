@@ -191,7 +191,7 @@ To manage environment variables such as the JWT token, you can use an `http-clie
 }
 ```
 
-In this file, the `token` under `dev` can be updated with an actual JWT token for authenticated requests. Make sure to replace the empty string with your actual token. To get your token, register first and save the token you receive in the response.
+In this file, the `token` under `dev` can be updated with an actual JWT token for authenticated requests. Make sure to replace the empty string with your actual token. To get your token, register first, login with your credentials, and save the token you receive in the response.
 
 ---
 ## Future Work
