@@ -6,7 +6,7 @@ from typing import Annotated
 # Related third-party imports
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request, Query, Path, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Query, Path, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
 from passlib.context import CryptContext
@@ -17,6 +17,8 @@ from sqlalchemy.exc import IntegrityError
 from database.database import create_db_and_tables, get_session
 from middleware.middleware import AuthMiddleware
 from models import schemas
+from email_.email_function import send_email
+
 
 load_dotenv()
 
@@ -58,7 +60,8 @@ def on_startup():
 
 
 @app.post('/registration', tags=['users'], response_model=schemas.UserRead)
-async def register_user(new_user: schemas.UserRegister, session: Session = Depends(get_session)):
+async def register_user(new_user: schemas.UserRegister, background_tasks: BackgroundTasks,
+                        session: Session = Depends(get_session)):
     hashed_password = get_password_hash(new_user.password)
     db_user = schemas.User(**new_user.dict(), hashed_password=hashed_password)
 
@@ -68,6 +71,9 @@ async def register_user(new_user: schemas.UserRegister, session: Session = Depen
     except IntegrityError:
         session.rollback()
         raise HTTPException(status_code=400, detail="Username or email already registered")
+
+    background_tasks.add_task(send_email, db_user.email, db_user.username)
+
     return db_user
 
 
@@ -155,7 +161,6 @@ async def add_note(note: schemas.NoteCreate, request: Request, session: Session 
 
     session.add(note_model)
     session.commit()
-    session.refresh(note_model)
     return note_model
 
 
@@ -175,7 +180,6 @@ async def update_note(note_id: ValidID, new_note: schemas.NoteUpdate,
     setattr(db_note, 'updated_at', datetime.utcnow())
     session.add(db_note)
     session.commit()
-    session.refresh(db_note)
     return db_note
 
 
@@ -265,7 +269,6 @@ async def add_tags(tag: schemas.TagCreate, request: Request, session: Session = 
 
     session.add(tag_model)
     session.commit()
-    session.refresh(tag_model)
     return tag_model
 
 
@@ -285,7 +288,6 @@ async def update_tag(tag_id: ValidID, new_tag: schemas.TagCreate,
 
     session.add(db_tag)
     session.commit()
-    session.refresh(db_tag)
     return db_tag
 
 
@@ -304,6 +306,6 @@ async def delete_tag(tag_id: ValidID, request: Request, session: Session = Depen
 
 
 # This is added for running the module manually to have access to debugger and breakpoint
-# To run the server, run this in Terminal: uvicorn app:main --reload
+# To run the server properly, run this in Terminal: uvicorn app:main --reload
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

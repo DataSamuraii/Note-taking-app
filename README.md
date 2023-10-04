@@ -18,6 +18,32 @@ Install the required packages using pip:
 pip install -r requirements.txt
 ```
 
+### Configuring `.env` for Environment Variables
+
+1. **Create `.env` in Root**: 
+   Create a `.env` file in the project's root directory.
+
+2. **Define Variables**: 
+   Populate `.env` with the necessary configurations:
+
+   ```env
+   DB_URL=mysql+pymysql://username:password@address/db_table_name
+   SECRET_KEY=secret
+   ALGORITHM=algorithm
+   ACCESS_TOKEN_EXPIRE_MINUTES=token_time_to_live
+   OWN_EMAIL="hello@example.com"
+   OWN_EMAIL_PASSWORD="your-password"
+   ```
+
+   Replace placeholders like `username`, `password`, etc., with actual values. `ACCESS_TOKEN_EXPIRE_MINUTES` should be an int.
+
+3. **Load in App**: 
+   Ensure your app reads from `.env` at startup. Libraries like `python-dotenv` can assist.
+
+**Note**: 
+- Always exclude `.env` from version control (e.g., add to `.gitignore`).
+- Keep a secure backup of `.env` contents.
+
 Run the FastAPI application:
 ```bash
 uvicorn main:app --reload
@@ -139,11 +165,6 @@ Note: Tag operations are not clearly defined in the provided code. Below are ass
 
 For more detailed and interactive documentation, utilize FastAPI's built-in Swagger UI or ReDoc by visiting `http://localhost:8000/docs` or `http://localhost:8000/redoc`, respectively.
 
-## Future Work
-- Implement a real database instead of the mock database.
-- Add metadata to the API.
-- Introduce background tasks for sending emails to users upon registration and login.
-- Enhance exception handling throughout the API.
 ---
 
 ## Testing the API
@@ -176,5 +197,5 @@ In this file, the `token` under `dev` can be updated with an actual JWT token fo
 ## Future Work
 - ~~Implement a real database instead of the mock database.~~
 - Add Metadata to API
-- Add Background task to send email to user email after registration and login
+- ~~Add Background task to send email to user email after registration and login~~
 - Add Exception handling
